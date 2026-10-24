@@ -3,6 +3,29 @@
 import json, re
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs, unquote, quote
+import threading, time
+
+# Cache TTL 15 menit — hindari scrape ulang untuk query yang sama (scrape = 30-60 detik)
+_CACHE = {}
+_CACHE_LOCK = threading.Lock()
+CACHE_TTL = 900
+
+def cache_get(key):
+    with _CACHE_LOCK:
+        hit = _CACHE.get(key)
+        if hit and time.time() - hit[0] < CACHE_TTL:
+            return hit[1]
+        if hit:
+            del _CACHE[key]
+    return None
+
+def cache_set(key, value):
+    with _CACHE_LOCK:
+        _CACHE[key] = (time.time(), value)
+        # jaga memori: max 200 entri, buang yang terlama
+        if len(_CACHE) > 200:
+            for k in sorted(_CACHE, key=lambda k: _CACHE[k][0])[:50]:
+                del _CACHE[k]
 
 def stealth_get(url):
     from scrapling.fetchers import StealthyFetcher
@@ -170,12 +193,21 @@ class Handler(BaseHTTPRequestHandler):
             if u.path == '/search':
                 q = str(data.get('query', ''))[:120]
                 if not q: return self._json(400, {'error': 'query kosong'})
-                return self._json(200, {'creator': '@xMSHaomi', 'status': True, 'result': tiktok_search_enriched(q)})
+                ck = ('search', q.lower())
+                res = cache_get(ck)
+                if res is None:
+                    res = tiktok_search_enriched(q)
+                    cache_set(ck, res)
+                return self._json(200, {'creator': '@xMSHaomi', 'status': True, 'result': res})
             if u.path == '/user':
                 q = str(data.get('username', '')).lstrip('@')[:30]
                 if not q: return self._json(400, {'error': 'username kosong'})
-                vids = tiktok_user(q)
-                if vids is None: return self._json(502, {'error': 'Akun tidak ditemukan'})
+                ck = ('user', q.lower())
+                vids = cache_get(ck)
+                if vids is None:
+                    vids = tiktok_user(q)
+                    if vids is None: return self._json(502, {'error': 'Akun tidak ditemukan'})
+                    cache_set(ck, vids)
                 return self._json(200, {'creator': '@xMSHaomi', 'status': True, 'result': vids})
             if u.path == '/resolve':
                 q = str(data.get('video', ''))
@@ -217,16 +249,29 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, {'status': True, 'creator': '@xMSHaomi'})
             if u.path == '/search':
                 if not q: return self._json(400, {'error': 'q kosong'})
-                return self._json(200, {'creator': '@xMSHaomi', 'status': True, 'result': tiktok_search_enriched(q)})
+                ck = ('search', q.lower())
+                res = cache_get(ck)
+                if res is None:
+                    res = tiktok_search_enriched(q)
+                    cache_set(ck, res)
+                return self._json(200, {'creator': '@xMSHaomi', 'status': True, 'result': res})
             if u.path == '/resolve':
                 if not q: return self._json(400, {'error': 'url kosong'})
-                r = tiktok_resolve(q)
+                ck = ('resolve', q)
+                r = cache_get(ck)
+                if r is None:
+                    r = tiktok_resolve(q)
+                    if r: cache_set(ck, r)
                 if not r: return self._json(502, {'error': 'Gagal ekstrak data video'})
                 return self._json(200, {'creator': '@xMSHaomi', 'status': True, 'result': r})
             if u.path == '/user':
                 if not q: return self._json(400, {'error': 'username kosong'})
-                vids = tiktok_user(q)
-                if vids is None: return self._json(502, {'error': 'Akun tidak ditemukan'})
+                ck = ('user', q.lower())
+                vids = cache_get(ck)
+                if vids is None:
+                    vids = tiktok_user(q)
+                    if vids is None: return self._json(502, {'error': 'Akun tidak ditemukan'})
+                    cache_set(ck, vids)
                 return self._json(200, {'creator': '@xMSHaomi', 'status': True, 'result': vids})
             self._json(404, {'error': 'not found'})
         except Exception as e:

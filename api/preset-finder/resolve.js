@@ -44,7 +44,7 @@ export default async function handler(req, res) {
     }
   } catch (e) {}
 
-  const allText = desc + '\n' + commentLinks.join('\n');
+  const allText = desc + '\n' + topComments.map(c => c.text).join('\n') + '\n' + commentLinks.join('\n');
   const links = [...new Set((allText.match(/https?:\/\/[^\s"')]+/g) || []).filter(u =>
     /\.(xml|zip)/i.test(u) || /preset|am_|alight|telegra|drive\.google|t\.me|s\.id|bit\.ly|cutt\.ly/i.test(u)))];
 
@@ -53,6 +53,7 @@ export default async function handler(req, res) {
     creator: '@xMSHaomi', status: true,
     result: {
       id,
+      url: v,
       title: desc.slice(0, 200),
       cover: info.cover || o?.thumbnail_url || '',
       video: info.play || '',

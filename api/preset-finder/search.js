@@ -1,7 +1,5 @@
 // HAOMI Preset Finder — search via backend server (Scrapling stealth) + enrich metadata via tikwm/oEmbed
-const BACKENDS = [
-  'https://ferry-ticket-vehicle-handy.trycloudflare.com',
-];
+const BACKENDS = [process.env.HAOMI_BACKEND_URL].filter(Boolean).map(v => v.replace(/\/$/, ''));
 
 async function tryBackends(path) {
   for (const b of BACKENDS) {
@@ -36,7 +34,7 @@ export default async function handler(req, res) {
   if (!q) return res.status(400).json({ error: 'Query kosong' });
 
   const j = await tryBackends('/search?q=' + encodeURIComponent(q));
-  if (!j || !j.status) return res.status(502).json({ error: 'Backend pencarian tidak tersedia, coba lagi nanti' });
+  if (!j || !j.status) return res.status(502).json({ error: 'Backend pencarian tidak tersedia. Atur HAOMI_BACKEND_URL ke URL backend-server yang aktif.' });
 
   // enrich concurrency 4
   const vids = j.result.slice(0, 12);

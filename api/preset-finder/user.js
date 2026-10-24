@@ -1,5 +1,5 @@
 // HAOMI Preset Finder — user endpoint: cari video dari akun @username (via backend stealth)
-const BACKENDS = ['https://ferry-ticket-vehicle-handy.trycloudflare.com'];
+const BACKENDS = [process.env.HAOMI_BACKEND_URL].filter(Boolean).map(v => v.replace(/\/$/, ''));
 
 async function tryBackends(path) {
   for (const b of BACKENDS) {
@@ -23,6 +23,6 @@ export default async function handler(req, res) {
   if (!/^[A-Za-z0-9._]{2,30}$/.test(u)) return res.status(400).json({ error: 'Username tidak valid' });
 
   const j = await tryBackends('/user?q=' + encodeURIComponent(u));
-  if (!j || !j.status) return res.status(502).json({ error: j?.error || 'Akun tidak ditemukan / backend down' });
+  if (!j || !j.status) return res.status(502).json({ error: j?.error || 'Backend akun tidak tersedia. Atur HAOMI_BACKEND_URL ke URL backend-server yang aktif.' });
   return res.status(200).json(j);
 }

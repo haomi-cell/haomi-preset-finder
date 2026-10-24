@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HAOMI Preset Finder</title>
+<style>
+  :root{--bg:#0a0f0a;--panel:#101a10;--line:#1e2f1e;--acc:#7CFC00;--acc2:#a8ff60;--dim:#7a9a7a;--txt:#d8f0d8}
+  *{margin:0;padding:0;box-sizing:border-box;font-family:'Courier New',monospace}
+  body{background:var(--bg);color:var(--txt);min-height:100vh;padding:16px}
+  .wrap{max-width:520px;margin:0 auto}
+  header{border:1px solid var(--line);background:var(--panel);padding:14px;border-radius:8px;margin-bottom:14px}
+  h1{font-size:18px;color:var(--acc);text-shadow:0 0 8px #7cfc0055;letter-spacing:1px}
+  .sub{font-size:11px;color:var(--dim);margin-top:4px}
+  .search{display:flex;gap:8px;margin-top:10px}
+  input{flex:1;background:#0c140c;border:1px solid var(--line);color:var(--txt);padding:10px;border-radius:6px;font-size:14px;outline:none}
+  input:focus{border-color:var(--acc);box-shadow:0 0 8px #7cfc0033}
+  button{background:linear-gradient(135deg,#2d5a2d,#1a331a);border:1px solid var(--acc);color:var(--acc);padding:10px 16px;border-radius:6px;font-weight:bold;cursor:pointer;font-size:13px;transition:.2s}
+  button:hover{background:var(--acc);color:#000;box-shadow:0 0 12px #7cfc0066}
+  button:disabled{opacity:.4;cursor:not-allowed}
+  .card{border:1px solid var(--line);background:var(--panel);border-radius:8px;margin-bottom:12px;overflow:hidden;transition:.2s}
+  .card:hover{border-color:var(--acc);box-shadow:0 0 10px #7cfc0022}
+  .card video,.card img{width:100%;max-height:340px;object-fit:contain;background:#000;display:block}
+  .cbody{padding:12px}
+  .cauthor{color:var(--acc2);font-size:12px;font-weight:bold}
+  .ctitle{font-size:12px;color:var(--txt);margin:6px 0;line-height:1.5;word-break:break-word}
+  .row{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+  .tag{background:#0c140c;border:1px solid var(--line);padding:3px 8px;border-radius:4px;font-size:10px;color:var(--dim)}
+  .tag b{color:var(--acc2)}
+  .actions{display:flex;gap:8px;margin-top:10px}
+  .actions button{flex:1;padding:8px;font-size:11px}
+  .statgrid{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;margin:10px 0;font-size:11px}
+  .statgrid div{display:flex;justify-content:space-between;border-bottom:1px dashed var(--line);padding:3px 0}
+  .statgrid span{color:var(--dim)} .statgrid b{color:var(--acc2)}
+  .links a{display:block;color:var(--acc);font-size:11px;margin:4px 0;word-break:break-all}
+  .status{border:1px solid var(--line);background:var(--panel);padding:14px;border-radius:8px;font-size:12px;color:var(--dim);margin-bottom:12px}
+  .glow{animation:blink 1s infinite}@keyframes blink{50%{opacity:.4}}
+  .renderbox{border:1px solid var(--acc);border-radius:8px;padding:12px;margin-bottom:12px;background:#0c140c;display:none}
+  .renderbox canvas{width:100%;background:#000;border-radius:4px}
+  footer{text-align:center;font-size:10px;color:var(--dim);padding:16px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>⚡ HAOMI PRESET FINDER</h1>
+    <div class="sub">Cari preset AM dari TikTok — statistik lengkap + link preset otomatis</div>
+    <div class="search">
+      <input id="q" placeholder="keyword, @username, atau link video TikTok…" autofocus>
+      <button id="btn" onclick="doSearch()">Cari</button>
+    </div>
+  </header>
+
+  <div id="status" class="status" style="display:none"></div>
+
+  <div id="renderbox" class="renderbox">
+    <div style="font-size:12px;color:var(--acc);margin-bottom:8px">▶ RENDER PRESET (parse XML langsung)</div>
+    <canvas id="cnv" width="540" height="540"></canvas>
+    <div id="rinfo" style="font-size:10px;color:var(--dim);margin-top:6px"></div>
+  </div>
+
+  <div id="results"></div>
+
+  <footer>𝐱𝙈𝙎𝙃𝙖𝙤𝙢𝙞 — powered by hermes agent</footer>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const fmtN = n => n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1e3 ? (n/1e3).toFixed(1)+'K' : n;
+
+function setStatus(msg, spin){ const s=$('status'); s.style.display='block'; s.innerHTML = spin ? `<span class="glow">⣾ ${msg}</span>` : msg; }
+function hideStatus(){ $('status').style.display='none'; }
+
+async function doSearch(){
+  const raw = $('q').value.trim(); if(!raw) return;
+  $('btn').disabled = true; $('results').innerHTML=''; $('renderbox').style.display='none';
+  try{
+    // 1) URL video langsung -> resolve langsung
+    if(/tiktok\.com\/.+\/video\/\d+/.test(raw)){
+      setStatus('URL video terdeteksi — menganalisa…', true);
+      await doResolveRaw(raw);
+      return;
+    }
+    // 2) username @user
+    if(/^@?[A-Za-z0-9._]{2,30}$/.test(raw) && !raw.includes(' ')){
+      setStatus('Mencari video dari akun @'+raw.replace('@','')+'…', true);
+      const r = await fetch('/api/preset-finder/user',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({username:raw})});
+      const j = await r.json();
+      hideStatus();
+      if(!j.result?.length){ setStatus('Akun tidak ditemukan / tidak ada video.'); return; }
+      renderList(j.result); return;
+    }
+    // 3) keyword biasa
+    setStatus('Mencari preset di TikTok…', true);
+    const r = await fetch('/api/preset-finder/search',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({query:raw})});
+    const j = await r.json();
+    hideStatus();
+    if(!j.result?.length){ setStatus('Tidak ada hasil. Coba kata kunci lain.'); return; }
+    renderList(j.result);
+  }catch(e){ setStatus('Gagal: '+e.message); }
+  $('btn').disabled = false;
+}
+
+async function doResolveRaw(url){
+  try{
+    const r = await fetch('/api/preset-finder/resolve',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({video:url})});
+    const j = await r.json();
+    hideStatus();
+    if(!j.status){ setStatus('Gagal: '+(j.error||'unknown')); return; }
+    renderDetail(j.result);
+  }catch(e){ setStatus('Gagal: '+e.message); }
+}
+$('q').addEventListener('keydown', e => { if(e.key==='Enter') doSearch(); });
+
+function togglePlay(btn, id){
+  const p = btn.closest('.cbody').querySelector('.player');
+  if(!p) return;
+  const show = p.style.display === 'none';
+  p.style.display = show ? 'block' : 'none';
+  btn.textContent = show ? '✕ Tutup' : '▶ Play';
+}
+
+function renderList(vids){
+  $('results').innerHTML = vids.map(v=>`
+    <div class="card">
+      <img src="${v.cover}" loading="lazy" onerror="this.style.display='none'">
+      <div class="cbody">
+        <div class="cauthor">@${v.author}</div>
+        <div class="ctitle">${(v.title||'').replace(/</g,'&lt;')}</div>
+        <div class="row"><span class="tag">⏱ <b>${v.duration}s</b></span><span class="tag">ID <b>${v.id}</b></span></div>
+        <div class="actions">
+          <button onclick="togglePlay(this,'${v.id}')">▶ Play</button>
+          <button onclick="doResolve('${v.url}')">🔍 Analisa + Preset</button>
+          <button onclick="window.open('${v.url}','_blank')">TikTok ↗</button>
+        </div>
+        <div class="player" style="display:none;margin-top:8px">
+          <iframe src="https://www.tiktok.com/embed/v2/${v.id}" style="width:100%;height:600px;border:0;border-radius:6px" allow="fullscreen" loading="lazy"></iframe>
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+async function doResolve(url){
+  setStatus('Menganalisa video: statistik + link preset…', true);
+  $('renderbox').style.display='none';
+  try{
+    const r = await fetch('/api/preset-finder/resolve',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({video:url})});
+    const j = await r.json();
+    hideStatus();
+    if(!j.status){ setStatus('Gagal: '+(j.error||'unknown')); return; }
+    renderDetail(j.result);
+  }catch(e){ setStatus('Gagal: '+e.message); }
+}
+
+function renderDetail(d){
+  const s = d.stats;
+  const linksHtml = d.preset_links.length
+    ? d.preset_links.map((u,i)=>`<a href="#" onclick="loadXML('${u}');return false">📎 preset ${i+1}: ${u}</a>`).join('')
+    : '<div style="color:var(--dim);font-size:11px">❌ Tidak ada link preset di deskripsi/komen</div>';
+  const commentsHtml = (d.comments||[]).map(c=>`<div style="font-size:10px;border-bottom:1px dashed var(--line);padding:3px 0"><b style="color:var(--acc2)">@${c.user}</b> ❤${c.likes} — ${c.text.replace(/</g,'&lt;')}</div>`).join('');
+  const card = document.createElement('div');
+  card.className='card';
+  card.innerHTML = `
+    <div class="cbody">
+      <div class="cauthor">@${s.author.username} <span style="color:var(--dim)">(${s.author.nickname}) · ${fmtN(s.author.followers)} followers</span></div>
+      <div class="ctitle">${(d.title||'').replace(/</g,'&lt;')}</div>
+      <div class="row">
+        <span class="tag">🌍 <b>${s.region}</b></span>
+        <span class="tag">📐 <b>${s.resolusi}</b></span>
+        <span class="tag">⏱ <b>${s.durasi_detik}s</b></span>
+      </div>
+      <div class="statgrid">
+        <div><span>❤ Like</span><b>${fmtN(s.like)}</b></div>
+        <div><span>💬 Komentar</span><b>${fmtN(s.komentar)}</b></div>
+        <div><span>🔁 Share</span><b>${fmtN(s.share)}</b></div>
+        <div><span>👁 Views</span><b>${fmtN(s.views)}</b></div>
+        <div><span>⬇ Download</span><b>${fmtN(s.download)}</b></div>
+        <div><span>🔖 Save</span><b>${fmtN(s.save)}</b></div>
+        <div><span>🎵 Musik</span><b>${(s.musik||'').slice(0,20)}</b></div>
+        <div><span>🕐 Upload</span><b>${s.upload_jam_lokal}</b></div>
+      </div>
+      <div style="font-size:12px;color:var(--acc);margin:8px 0 4px">PRESET DITEMUKAN: ${d.preset_links.length}</div>
+      <div class="links">${linksHtml}</div>
+      <div style="font-size:11px;color:var(--acc);margin:10px 0 4px">KOMEN TERATAS</div>
+      ${commentsHtml}
+    </div>`;
+  $('results').prepend(card);
+  // player: official embed (selalu bisa play)
+  card.querySelector('.cbody').insertAdjacentHTML('beforebegin',
+    `<iframe src="https://www.tiktok.com/embed/v2/${d.id}" style="width:100%;height:600px;border:0" allow="fullscreen" loading="lazy"></iframe>`);
+  setStatus(d.found ? '✅ Preset ditemukan — klik link di atas untuk render' : 'Tidak ada link preset, cek manual di TikTok.');
+}
+
+async function loadXML(u){
+  setStatus('Loading & parse XML preset…', true);
+  try{
+    const r = await fetch('/api/preset-finder/xml?url='+encodeURIComponent(u));
+    const text = await r.text();
+    const doc = new DOMParser().parseFromString(text, 'text/xml');
+    const scene = doc.querySelector('scene');
+    const shapes = doc.querySelectorAll('shape');
+    if(!scene){ setStatus('❌ Bukan XML preset AM yang valid'); return; }
+    const W = +scene.getAttribute('width')||1080, H = +scene.getAttribute('height')||1080;
+    drawScene(scene, shapes, W, H);
+    setStatus('✅ Render OK — '+shapes.length+' shape');
+  }catch(e){ setStatus('Gagal render: '+e.message); }
+}
+
+function drawScene(scene, shapes, W, H){
+  const box = $('renderbox'); box.style.display='block';
+  const cnv = $('cnv'), ctx = cnv.getContext('2d');
+  const scale = Math.min(cnv.width/W, cnv.height/H);
+  ctx.fillStyle = scene.getAttribute('bgcolor')||'#000';
+  ctx.fillRect(0,0,cnv.width,cnv.height);
+  ctx.save();
+  ctx.translate((cnv.width-W*scale)/2, (cnv.height-H*scale)/2);
+  ctx.scale(scale, scale);
+  let drawn = 0;
+  shapes.forEach(sh=>{
+    const path = sh.querySelector('path');
+    if(!path) return;
+    const d = path.getAttribute('d')||'';
+    const loc = sh.querySelector('location')?.getAttribute('value')||'0,0,0';
+    const [lx, ly] = loc.split(',').map(Number);
+    const fill = sh.getAttribute('fillType')==='color' ? sh.querySelector('fillColor')?.getAttribute('value') : null;
+    const strokeC = sh.querySelector('strokeColor')?.getAttribute('value');
+    const strokeW = +(sh.querySelector('strokeWidth')?.getAttribute('value')||0);
+    const p = new Path2D(convertD(d));
+    ctx.save();
+    ctx.translate(lx, ly);
+    if(fill){ ctx.fillStyle = argb(fill); ctx.fill(p); drawn++; }
+    if(strokeC && strokeW){ ctx.strokeStyle = argb(strokeC); ctx.lineWidth = strokeW*2; ctx.stroke(p); drawn++; }
+    ctx.restore();
+  });
+  ctx.restore();
+  $('rinfo').textContent = `scene ${W}x${H} · ${shapes.length} shape · ${drawn} digambar · scale ${scale.toFixed(3)}`;
+}
+
+// path d: AM pakai koordinat absolut M x y L x y C ... — Path2D bisa langsung parse
+function convertD(d){ return d; }
+function argb(v){
+  v = v.replace('#','');
+  if(v.length===8) v = v.slice(2); // buang alpha utk canvas (full opacity)
+  return '#'+v;
+}
+</script>
+</body>
+</html>

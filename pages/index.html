@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="haomi-api-base" content="/api/preset-finder">
+<title>HAOMI Preset Finder</title>
+<style>
+  :root{--bg:#0a0f0a;--panel:#101a10;--line:#1e2f1e;--acc:#7CFC00;--acc2:#a8ff60;--dim:#7a9a7a;--txt:#d8f0d8}
+  *{margin:0;padding:0;box-sizing:border-box;font-family:'Courier New',monospace}
+  body{background:var(--bg);color:var(--txt);min-height:100vh;padding:16px}
+  .wrap{max-width:520px;margin:0 auto}
+  header{border:1px solid var(--line);background:var(--panel);padding:14px;border-radius:8px;margin-bottom:14px}
+  h1{font-size:18px;color:var(--acc);text-shadow:0 0 8px #7cfc0055;letter-spacing:1px}
+  .sub{font-size:11px;color:var(--dim);margin-top:4px}
+  .search{display:flex;gap:8px;margin-top:10px}
+  input{flex:1;background:#0c140c;border:1px solid var(--line);color:var(--txt);padding:10px;border-radius:6px;font-size:14px;outline:none}
+  input:focus{border-color:var(--acc);box-shadow:0 0 8px #7cfc0033}
+  button{background:linear-gradient(135deg,#2d5a2d,#1a331a);border:1px solid var(--acc);color:var(--acc);padding:10px 16px;border-radius:6px;font-weight:bold;cursor:pointer;font-size:13px;transition:.2s}
+  button:hover{background:var(--acc);color:#000;box-shadow:0 0 12px #7cfc0066}
+  button:disabled{opacity:.4;cursor:not-allowed}
+  .card{border:1px solid var(--line);background:var(--panel);border-radius:8px;margin-bottom:12px;overflow:hidden;transition:.2s}
+  .card:hover{border-color:var(--acc);box-shadow:0 0 10px #7cfc0022}
+  .card video,.card img{width:100%;max-height:340px;object-fit:contain;background:#000;display:block}
+  .cbody{padding:12px}
+  .cauthor{color:var(--acc2);font-size:12px;font-weight:bold}
+  .ctitle{font-size:12px;color:var(--txt);margin:6px 0;line-height:1.5;word-break:break-word}
+  .row{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+  .tag{background:#0c140c;border:1px solid var(--line);padding:3px 8px;border-radius:4px;font-size:10px;color:var(--dim)}
+  .tag b{color:var(--acc2)}
+  .actions{display:flex;gap:8px;margin-top:10px}
+  .actions button{flex:1;padding:8px;font-size:11px}
+  .statgrid{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;margin:10px 0;font-size:11px}
+  .tab{flex:1;border-color:var(--line);color:var(--dim);background:#0c140c}.tab.active{border-color:var(--acc);color:var(--acc);background:#152515}
+  .empty{padding:22px 14px;text-align:center;border:1px dashed var(--line);border-radius:8px;color:var(--dim);font-size:12px;line-height:1.7}
+  .detail-back{margin-bottom:10px;width:100%}
+  .statgrid div{display:flex;justify-content:space-between;border-bottom:1px dashed var(--line);padding:3px 0}
+  .statgrid span{color:var(--dim)} .statgrid b{color:var(--acc2)}
+  .links a{display:block;color:var(--acc);font-size:11px;margin:4px 0;word-break:break-all}
+  .status{border:1px solid var(--line);background:var(--panel);padding:14px;border-radius:8px;font-size:12px;color:var(--dim);margin-bottom:12px}
+  .glow{animation:blink 1s infinite}@keyframes blink{50%{opacity:.4}}
+  .renderbox{border:1px solid var(--acc);border-radius:8px;padding:12px;margin-bottom:12px;background:#0c140c;display:none}
+  .renderbox canvas{width:100%;background:#000;border-radius:4px}
+  footer{text-align:center;font-size:10px;color:var(--dim);padding:16px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>⚡ HAOMI PRESET FINDER</h1>
+    <div class="sub">Cari video preset Alight Motion · detail publik · tautan XML/ZIP ≤ 5 MB</div>
+    <div class="actions" style="margin-top:12px">
+      <button type="button" id="tab-search" class="tab active" onclick="showTab('search')">⌕ Cari</button>
+      <button type="button" id="tab-favorites" class="tab" onclick="showTab('favorites')">☆ Favorit <span id="fav-count">0</span></button>
+    </div>
+    <div class="search" id="search-panel">
+      <input id="q" placeholder="Kata kunci, @username, atau tautan TikTok…" autocomplete="off">
+      <button id="btn" onclick="doSearch()">Cari</button>
+    </div>
+    <div class="sub" style="margin-top:8px">Cari video preset AM di TikTok. Pilih video untuk melihat detail dan tautan preset.</div>
+  </header>
+
+  <div id="status" class="status" style="display:none"></div>
+
+  <div id="renderbox" class="renderbox">
+    <div style="font-size:12px;color:var(--acc);margin-bottom:8px">▶ RENDER PRESET (parse XML langsung)</div>
+    <canvas id="cnv" width="540" height="540"></canvas>
+    <div id="rinfo" style="font-size:10px;color:var(--dim);margin-top:6px"></div>
+  </div>
+
+  <div id="results"></div>
+  <div id="favorites" style="display:none"></div>
+  <button id="back-btn" class="detail-back" style="display:none" type="button" onclick="backToResults()">← Kembali ke hasil</button>
+
+  <footer>HAOMI PRESET FINDER · Data bergantung pada ketersediaan sumber publik</footer>
+</div>
+
+<script>
+// Set meta[name=haomi-api-base] to the deployed API base URL. Example: https://your-api.vercel.app/api/preset-finder
+const API_BASE = (document.querySelector('meta[name="haomi-api-base"]')?.content || '/api/preset-finder').replace(/\/$/, '');
+const $ = id => document.getElementById(id);
+const fmtN = n => { const v=Number(n); if(!Number.isFinite(v)) return '—'; return v>=1e6?(v/1e6).toFixed(1)+'M':v>=1e3?(v/1e3).toFixed(1)+'K':String(v); };
+const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const safeUrl = value => { try { const u=new URL(String(value||'')); return ['http:','https:'].includes(u.protocol) ? u.href : ''; } catch { return ''; } };
+function setStatus(msg, spin=false){ const s=$('status'); s.style.display='block'; s.textContent=''; const span=document.createElement('span'); span.textContent=(spin?'⣾ ':'')+msg; if(spin) span.className='glow'; s.appendChild(span); }
+function hideStatus(){ $('status').style.display='none'; }
+async function api(path, options={}){
+  const response=await fetch(API_BASE+'/'+path.replace(/^\//,''), { ...options, headers:{'content-type':'application/json',...(options.headers||{})}, signal: options.signal || AbortSignal.timeout(60000) });
+  const type=response.headers.get('content-type')||'';
+  const body=type.includes('application/json')?await response.json():await response.text();
+  if(!response.ok) throw new Error((body && body.error) || `HTTP ${response.status}`);
+  return body;
+}
+let activeTab='search';
+let lastResults=[];
+let detailMode=false;
+const FAVORITES_KEY='haomi-preset-finder:favorites:v1';
+function getFavorites(){try{return JSON.parse(localStorage.getItem(FAVORITES_KEY)||'[]')}catch{return []}}
+function saveFavorites(items){try{localStorage.setItem(FAVORITES_KEY,JSON.stringify(items));$('fav-count').textContent=String(items.length)}catch{setStatus('Penyimpanan favorit tidak tersedia di browser ini.')}}
+function isFavorite(v){const id=String(v.id||v.url||'');return getFavorites().some(x=>String(x.id||x.url||'')===id)}
+function toggleFavorite(v){const list=getFavorites(),id=String(v.id||v.url||'');const next=list.some(x=>String(x.id||x.url||'')===id)?list.filter(x=>String(x.id||x.url||'')!==id):[{...v,id},...list];saveFavorites(next);renderFavorites();renderList(lastResults);}
+function showTab(tab){activeTab=tab;detailMode=false;$('search-panel').style.display=tab==='search'?'flex':'none';$('results').style.display=tab==='search'?'block':'none';$('favorites').style.display=tab==='favorites'?'block':'none';$('back-btn').style.display='none';$('tab-search').classList.toggle('active',tab==='search');$('tab-favorites').classList.toggle('active',tab==='favorites');if(tab==='favorites')renderFavorites();}
+function renderFavorites(){const list=getFavorites();$('fav-count').textContent=String(list.length);$('favorites').innerHTML=list.length?list.map(v=>favoriteCard(v)).join(''):'<div class="empty">Belum ada favorit.<br>Tekan ☆ pada video untuk menyimpannya di perangkat ini.</div>';}
+function favoriteCard(v){const url=safeUrl(v.url||'');const cover=safeUrl(v.cover||'');return `<article class="card">${cover?`<img src="${esc(cover)}" alt="Sampul video" loading="lazy" referrerpolicy="no-referrer">`:''}<div class="cbody"><div class="cauthor">@${esc(String(v.author||'unknown').replace(/^@/,''))}</div><div class="ctitle">${esc(v.title||'Tanpa deskripsi')}</div><div class="actions">${url?`<button data-action="resolve" data-url="${esc(url)}">Lihat detail</button><button data-action="open" data-url="${esc(url)}">TikTok ↗</button>`:''}<button data-action="unfavorite" data-id="${esc(v.id||url)}">★ Hapus favorit</button></div></div></article>`}
+function backToResults(){detailMode=false;$('back-btn').style.display='none';$('results').style.display='block';$('results').querySelectorAll('.detail-card').forEach(x=>x.remove());hideStatus();}
+async function doSearch(){
+  const raw=$('q').value.trim(); if(!raw) return;
+  $('btn').disabled=true; $('results').replaceChildren(); $('renderbox').style.display='none';
+  try{
+    let j;
+    if(/tiktok\.com\/@?[\w.-]+\/video\/\d+/i.test(raw) || /tiktok\.com\/t\/\w+/i.test(raw)){
+      setStatus('URL video terdeteksi — menganalisis…',true); j=await api('resolve',{method:'POST',body:JSON.stringify({video:raw})});
+      if(!j.status || !j.result) throw new Error(j.error||'Data video tidak tersedia'); renderDetail(j.result); return;
+    }
+    if(/^@?[A-Za-z0-9._]{2,30}$/.test(raw)){
+      setStatus('Mencari video dari akun @'+raw.replace(/^@/, '')+'…',true);
+      j=await api('user',{method:'POST',body:JSON.stringify({username:raw})});
+    } else {
+      setStatus('Mencari video TikTok…',true); j=await api('search',{method:'POST',body:JSON.stringify({query:raw})});
+    }
+    if(!j.status || !Array.isArray(j.result) || !j.result.length){ setStatus(j.error||'Tidak ada hasil. Coba kata kunci lain.'); return; }
+    hideStatus(); lastResults=j.result; renderList(j.result);
+  }catch(e){ setStatus('Pencarian gagal: '+e.message+' — periksa URL API dan status backend.'); }
+  finally { $('btn').disabled=false; }
+}
+$('q').addEventListener('keydown',e=>{if(e.key==='Enter') doSearch();});
+renderFavorites();
+function renderList(vids){
+  $('results').innerHTML=vids.map(v=>{
+    const url=safeUrl(v.url||''); const id=String(v.id||''); const cover=safeUrl(v.cover||'');
+    return `<article class="card">
+      ${cover?`<img src="${esc(cover)}" alt="Sampul video TikTok" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.display='none'">`:''}
+      <div class="cbody"><div class="cauthor">@${esc(String(v.author||'unknown').replace(/^@/,''))}</div>
+      <div class="ctitle">${esc(v.title||'Tanpa deskripsi')}</div>
+      <div class="row"><span class="tag">⏱ <b>${esc(v.duration ?? '—')}s</b></span><span class="tag">ID <b>${esc(id||'—')}</b></span></div>
+      <div class="actions"><button type="button" data-action="play" data-id="${esc(id)}">▶ Play</button>
+      <button type="button" data-action="resolve" data-url="${esc(url)}">🔍 Analisa + Preset</button>
+      ${url?`<button type="button" data-action="open" data-url="${esc(url)}">TikTok ↗</button>`:''}
+      <button type="button" data-action="favorite" data-index="${lastResults.indexOf(v)}">${isFavorite(v)?'★ Favorit':'☆ Favorit'}</button></div>
+      <div class="player" style="display:none;margin-top:8px"></div></div></article>`;
+  }).join('');
+}
+$('results').addEventListener('click', async e=>{
+  const b=e.target.closest('button[data-action]'); if(!b) return;
+  const action=b.dataset.action, url=safeUrl(b.dataset.url), id=b.dataset.id;
+  if(action==='open'&&url){window.open(url,'_blank','noopener,noreferrer');return;}
+  if(action==='favorite'){const v=lastResults[Number(b.dataset.index)];if(v)toggleFavorite(v);return;}
+  if(action==='unfavorite'){const id=b.dataset.id;saveFavorites(getFavorites().filter(x=>String(x.id||x.url||'')!==String(id)));renderFavorites();return;}
+  if(action==='resolve'&&url){await doResolve(url);return;}
+  if(action==='play'){
+    const player=b.closest('.cbody').querySelector('.player');
+    if(player.style.display==='none'){player.style.display='block';player.innerHTML=`<iframe title="Video TikTok" src="https://www.tiktok.com/embed/v2/${encodeURIComponent(id)}" style="width:100%;height:600px;border:0;border-radius:6px" allow="fullscreen" loading="lazy" referrerpolicy="strict-origin-when-cross-origin"></iframe>`;b.textContent='✕ Tutup';}
+    else {player.style.display='none';player.replaceChildren();b.textContent='▶ Play';}
+  }
+});
+async function doResolve(url){
+  setStatus('Menganalisis statistik video dan mencari tautan preset…',true); $('renderbox').style.display='none';
+  try{const j=await api('resolve',{method:'POST',body:JSON.stringify({video:url})}); if(!j.status||!j.result) throw new Error(j.error||'Data video tidak tersedia'); renderDetail(j.result);}
+  catch(e){setStatus('Analisis gagal: '+e.message);}
+}
+function renderDetail(d){
+  const s=d.stats||{}, a=s.author||{}, links=Array.isArray(d.preset_links)?d.preset_links:[], comments=Array.isArray(d.comments)?d.comments:[];
+  const linksHtml=links.length?links.map((u,i)=>{const safe=safeUrl(u);return safe?`<a href="${esc(safe)}" target="_blank" rel="noopener noreferrer">📎 Link ${i+1}: ${esc(safe)}</a><button type="button" data-action="xml" data-url="${esc(safe)}">Periksa / render XML</button>`:''}).join(''):'<div style="color:var(--dim);font-size:11px">Tidak ada tautan preset yang terdeteksi. Komentar publik mungkin tidak tersedia dari sumber data.</div>';
+  const commentsHtml=comments.length?comments.map(c=>`<div style="font-size:10px;border-bottom:1px dashed var(--line);padding:5px 0"><b style="color:var(--acc2)">@${esc(c.user||'?')}</b> ❤${esc(fmtN(c.likes))} — ${esc(c.text||'')}</div>`).join(''):'<div style="font-size:11px;color:var(--dim)">Komentar tidak tersedia dari sumber data.</div>';
+  detailMode=true;$('back-btn').style.display='block';$('results').querySelectorAll('.detail-card').forEach(x=>x.remove());
+  const card=document.createElement('article'); card.className='card detail-card';
+  card.innerHTML=`${safeUrl(d.cover)?`<img src="${esc(safeUrl(d.cover))}" alt="Sampul video" loading="lazy" referrerpolicy="no-referrer">`:''}<div class="cbody">
+  <div class="cauthor">@${esc(a.username||'unknown')} <span style="color:var(--dim)">(${esc(a.nickname||'—')}) · ${esc(fmtN(a.followers))} followers</span></div>
+  <div class="ctitle">${esc(d.title||'Tanpa deskripsi')}</div><div class="row"><span class="tag">🌍 <b>${esc(s.region||'Tidak tersedia')}</b></span><span class="tag">📐 <b>${esc(s.resolusi||'—')}</b></span><span class="tag">⏱ <b>${esc(s.durasi_detik??'—')}s</b></span></div>
+  <div class="statgrid">${[['❤ Like',s.like],['💬 Komentar',s.komentar],['🔁 Share',s.share],['👁 Views',s.views],['⬇ Download',s.download],['🔖 Favorit',s.save],['🎵 Musik',s.musik],['🕐 Upload',s.upload_jam_lokal]].map(([k,v])=>`<div><span>${esc(k)}</span><b>${esc(typeof v==='number'?fmtN(v):(v||'—'))}</b></div>`).join('')}</div>
+  <div style="font-size:12px;color:var(--acc);margin:8px 0 4px">TAUTAN TERDETEKSI: ${links.length}</div><div class="links">${linksHtml}</div><div style="font-size:11px;color:var(--acc);margin:10px 0 4px">KOMENTAR YANG TERSEDIA</div>${commentsHtml}
+  <div class="actions">${safeUrl(d.url||'')?`<button type="button" data-action="open" data-url="${esc(safeUrl(d.url))}">Buka TikTok ↗</button>`:''}</div></div>`;
+  $('results').prepend(card); card.scrollIntoView({behavior:'smooth',block:'start'});
+  if(d.id){const frame=document.createElement('iframe');frame.title='Video TikTok';frame.src='https://www.tiktok.com/embed/v2/'+encodeURIComponent(d.id);frame.style='width:100%;height:600px;border:0';frame.loading='lazy';frame.allow='fullscreen';card.prepend(frame);}
+  setStatus(links.length?'Tautan terdeteksi. XML akan dirender jika formatnya didukung.':'Video ditemukan, tetapi tautan preset belum terdeteksi.');
+}
+$('results').addEventListener('click',async e=>{const b=e.target.closest('button[data-action="xml"]');if(b) await loadXML(safeUrl(b.dataset.url));});
+async function loadXML(url){
+  if(!url){setStatus('URL preset tidak valid.');return;} setStatus('Mengambil XML (maksimum 5 MB)…',true);
+  try{
+    const r=await fetch(API_BASE+'/xml?url='+encodeURIComponent(url),{signal:AbortSignal.timeout(20000)});
+    if(!r.ok){let message='HTTP '+r.status;try{message=(await r.json()).error||message;}catch{}throw new Error(message);}
+    const text=await r.text(); if(new Blob([text]).size>5*1024*1024) throw new Error('File melebihi batas 5 MB');
+    const doc=new DOMParser().parseFromString(text,'application/xml'); if(doc.querySelector('parsererror')) throw new Error('XML tidak valid');
+    const scene=doc.querySelector('scene'), shapes=doc.querySelectorAll('shape'); if(!scene) throw new Error('Tidak ditemukan elemen scene pada XML');
+    const W=Number(scene.getAttribute('width'))||1080,H=Number(scene.getAttribute('height'))||1080; drawScene(scene,shapes,W,H); setStatus(`XML terbaca — ${shapes.length} shape. Preview hanya mendukung sebagian elemen XML Alight Motion.`);
+  }catch(e){setStatus('Gagal memuat XML: '+e.message);}
+}
+function drawScene(scene,shapes,W,H){
+  const box=$('renderbox');box.style.display='block';const cnv=$('cnv'),ctx=cnv.getContext('2d');
+  const scale=Math.min(cnv.width/W,cnv.height/H);ctx.clearRect(0,0,cnv.width,cnv.height);ctx.fillStyle=scene.getAttribute('bgcolor')||'#000';ctx.fillRect(0,0,cnv.width,cnv.height);
+  ctx.save();ctx.translate((cnv.width-W*scale)/2,(cnv.height-H*scale)/2);ctx.scale(scale,scale);let drawn=0;
+  shapes.forEach(sh=>{const path=sh.querySelector('path');if(!path)return;const d=path.getAttribute('d')||'';const loc=sh.querySelector('location')?.getAttribute('value')||'0,0,0';const [lx,ly]=loc.split(',').map(Number);if(!Number.isFinite(lx)||!Number.isFinite(ly))return;const fill=sh.getAttribute('fillType')==='color'?sh.querySelector('fillColor')?.getAttribute('value'):null;const strokeC=sh.querySelector('strokeColor')?.getAttribute('value');const strokeW=Number(sh.querySelector('strokeWidth')?.getAttribute('value')||0);try{const p=new Path2D(d);ctx.save();ctx.translate(lx,ly);if(fill){ctx.fillStyle=argb(fill);ctx.fill(p);drawn++;}if(strokeC&&strokeW>0){ctx.strokeStyle=argb(strokeC);ctx.lineWidth=strokeW*2;ctx.stroke(p);drawn++;}ctx.restore();}catch{}});
+  ctx.restore();$('rinfo').textContent=`scene ${W}×${H} · ${shapes.length} shape · ${drawn} bagian digambar · skala ${scale.toFixed(3)}`;
+}
+function argb(v){v=String(v||'').replace('#','');if(!/^[0-9a-f]{6}([0-9a-f]{2})?$/i.test(v))return '#ffffff';if(v.length===8)v=v.slice(2);return '#'+v;}
+</script>
+</body>
+</html>

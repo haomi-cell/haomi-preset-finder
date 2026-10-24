@@ -193,21 +193,13 @@ class Handler(BaseHTTPRequestHandler):
             if u.path == '/search':
                 q = str(data.get('query', ''))[:120]
                 if not q: return self._json(400, {'error': 'query kosong'})
-                ck = ('search', q.lower())
-                res = cache_get(ck)
-                if res is None:
-                    res = tiktok_search_enriched(q)
-                    cache_set(ck, res)
+                res = tiktok_search_enriched(q)
                 return self._json(200, {'creator': '@xMSHaomi', 'status': True, 'result': res})
             if u.path == '/user':
                 q = str(data.get('username', '')).lstrip('@')[:30]
                 if not q: return self._json(400, {'error': 'username kosong'})
-                ck = ('user', q.lower())
-                vids = cache_get(ck)
-                if vids is None:
-                    vids = tiktok_user(q)
-                    if vids is None: return self._json(502, {'error': 'Akun tidak ditemukan'})
-                    cache_set(ck, vids)
+                vids = tiktok_user(q)
+                if vids is None: return self._json(502, {'error': 'Akun tidak ditemukan'})
                 return self._json(200, {'creator': '@xMSHaomi', 'status': True, 'result': vids})
             if u.path == '/resolve':
                 q = str(data.get('video', ''))
@@ -249,29 +241,17 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, {'status': True, 'creator': '@xMSHaomi'})
             if u.path == '/search':
                 if not q: return self._json(400, {'error': 'q kosong'})
-                ck = ('search', q.lower())
-                res = cache_get(ck)
-                if res is None:
-                    res = tiktok_search_enriched(q)
-                    cache_set(ck, res)
+                res = tiktok_search_enriched(q)
                 return self._json(200, {'creator': '@xMSHaomi', 'status': True, 'result': res})
             if u.path == '/resolve':
                 if not q: return self._json(400, {'error': 'url kosong'})
-                ck = ('resolve', q)
-                r = cache_get(ck)
-                if r is None:
-                    r = tiktok_resolve(q)
-                    if r: cache_set(ck, r)
+                r = tiktok_resolve(q)
                 if not r: return self._json(502, {'error': 'Gagal ekstrak data video'})
                 return self._json(200, {'creator': '@xMSHaomi', 'status': True, 'result': r})
             if u.path == '/user':
                 if not q: return self._json(400, {'error': 'username kosong'})
-                ck = ('user', q.lower())
-                vids = cache_get(ck)
-                if vids is None:
-                    vids = tiktok_user(q)
-                    if vids is None: return self._json(502, {'error': 'Akun tidak ditemukan'})
-                    cache_set(ck, vids)
+                vids = tiktok_user(q)
+                if vids is None: return self._json(502, {'error': 'Akun tidak ditemukan'})
                 return self._json(200, {'creator': '@xMSHaomi', 'status': True, 'result': vids})
             self._json(404, {'error': 'not found'})
         except Exception as e:
